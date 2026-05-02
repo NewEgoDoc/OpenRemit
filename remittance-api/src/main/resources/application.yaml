@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: remittance-api
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:mysql://localhost:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: openremit
+    password: openremit
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: false
+  flyway:
+    enabled: false   # Day 2부터 활성화
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
