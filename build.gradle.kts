@@ -53,6 +53,7 @@ subprojects {
     }
 }
 
+// IntelliJ Gradle delegate가 :classes / :testClasses를 루트에서 호출할 때 대비한 aggregator
 tasks.register("classes") {
     dependsOn(subprojects.map { "${it.path}:classes" })
 }
