@@ -11,7 +11,6 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
-import jakarta.persistence.JoinColumn
 import jakarta.persistence.OneToMany
 import jakarta.persistence.OrderBy
 import jakarta.persistence.Table
@@ -73,8 +72,12 @@ class Remittance(
     @Column(name = "updated_at", nullable = false)
     var updatedAt: Instant = Instant.now()
 
-    @OneToMany(cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.LAZY)
-    @JoinColumn(name = "remittance_id", nullable = false)
+    @OneToMany(
+        mappedBy = "remittance",
+        cascade = [CascadeType.ALL],
+        orphanRemoval = true,
+        fetch = FetchType.LAZY,
+    )
     @OrderBy("id ASC")
     private val _statusHistory: MutableList<RemittanceStatusHistory> = mutableListOf()
 
@@ -125,6 +128,7 @@ class Remittance(
         status = target
         updatedAt = Instant.now()
         _statusHistory += RemittanceStatusHistory(
+            remittance = this,
             fromStatus = from,
             toStatus = target,
             reason = reason,
