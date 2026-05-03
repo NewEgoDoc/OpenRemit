@@ -37,6 +37,7 @@ subprojects {
 
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().imports {
         mavenBom("org.springframework.boot:spring-boot-dependencies:4.0.6")
+        mavenBom("org.testcontainers:testcontainers-bom:1.20.4")
     }
 
     dependencies {
@@ -50,4 +51,11 @@ subprojects {
     tasks.withType<Test> {
         useJUnitPlatform()
     }
+}
+
+tasks.register("classes") {
+    dependsOn(subprojects.map { "${it.path}:classes" })
+}
+tasks.register("testClasses") {
+    dependsOn(subprojects.map { "${it.path}:testClasses" })
 }
