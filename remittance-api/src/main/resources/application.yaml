@@ -17,7 +17,14 @@ spring:
         format_sql: true
     show-sql: false
   flyway:
-    enabled: false   # Day 2부터 활성화
+    enabled: true
+    locations: classpath:db/migration
+
+openremit:
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-please-change-this-must-be-32+bytes}
+    issuer: https://openremit.dev
+    ttl: PT1H
 
 server:
   port: 8080
