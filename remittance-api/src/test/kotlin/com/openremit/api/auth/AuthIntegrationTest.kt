@@ -78,7 +78,7 @@ class AuthIntegrationTest @Autowired constructor(
 
         assertEquals(200, response.status)
         val body = readMap(response.contentAsString)
-        val token = body["accessToken"] as String
+        val token = body["access_token"] as String
         assertTrue(token.isNotBlank())
 
         val jwt = jwtDecoder.decode(token)

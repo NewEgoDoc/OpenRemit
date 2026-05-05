@@ -2,7 +2,12 @@ package com.openremit.api.interfaces.error
 
 import com.openremit.api.application.auth.EmailAlreadyExistsException
 import com.openremit.api.application.auth.InvalidCredentialsException
+import com.openremit.api.domain.IllegalStateTransitionException
 import com.openremit.api.domain.InsufficientBalanceException
+import com.openremit.api.infrastructure.idempotency.IdempotencyConflictException
+import com.openremit.api.infrastructure.idempotency.IdempotencyInProgressException
+import com.openremit.api.infrastructure.idempotency.IdempotencyKeyTooLongException
+import com.openremit.api.infrastructure.idempotency.MissingIdempotencyKeyException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -24,6 +29,26 @@ class GlobalExceptionHandler {
     @ExceptionHandler(InsufficientBalanceException::class)
     fun handleInsufficientBalance(ex: InsufficientBalanceException): ProblemDetail =
         problem(HttpStatus.BAD_REQUEST, "insufficient-balance", "Insufficient Balance", ex.message)
+
+    @ExceptionHandler(IllegalStateTransitionException::class)
+    fun handleIllegalTransition(ex: IllegalStateTransitionException): ProblemDetail =
+        problem(HttpStatus.CONFLICT, "illegal-state-transition", "Illegal State Transition", ex.message)
+
+    @ExceptionHandler(IdempotencyConflictException::class)
+    fun handleIdempotencyConflict(ex: IdempotencyConflictException): ProblemDetail =
+        problem(HttpStatus.CONFLICT, "idempotency-conflict", "Idempotency Conflict", ex.message)
+
+    @ExceptionHandler(MissingIdempotencyKeyException::class)
+    fun handleMissingIdempotencyKey(ex: MissingIdempotencyKeyException): ProblemDetail =
+        problem(HttpStatus.BAD_REQUEST, "missing-idempotency-key", "Missing Idempotency-Key", ex.message)
+
+    @ExceptionHandler(IdempotencyKeyTooLongException::class)
+    fun handleIdempotencyKeyTooLong(ex: IdempotencyKeyTooLongException): ProblemDetail =
+        problem(HttpStatus.BAD_REQUEST, "idempotency-key-too-long", "Idempotency-Key Too Long", ex.message)
+
+    @ExceptionHandler(IdempotencyInProgressException::class)
+    fun handleIdempotencyInProgress(ex: IdempotencyInProgressException): ProblemDetail =
+        problem(HttpStatus.CONFLICT, "idempotency-in-progress", "Idempotency Request In Progress", ex.message)
 
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail =
