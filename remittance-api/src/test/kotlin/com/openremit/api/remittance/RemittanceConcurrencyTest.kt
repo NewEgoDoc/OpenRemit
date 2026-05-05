@@ -4,6 +4,7 @@ import com.openremit.api.TestcontainersConfig
 import com.openremit.api.application.remittance.RemittanceCreateUseCase
 import com.openremit.api.domain.User
 import com.openremit.api.domain.Wallet
+import com.openremit.api.infrastructure.fx.FxRateCache
 import com.openremit.api.infrastructure.persistence.RemittanceRepository
 import com.openremit.api.infrastructure.persistence.UserRepository
 import com.openremit.api.infrastructure.persistence.WalletRepository
@@ -33,6 +34,7 @@ class RemittanceConcurrencyTest @Autowired constructor(
     private val walletRepository: WalletRepository,
     private val remittanceRepository: RemittanceRepository,
     private val paymentRepository: PaymentRepository,
+    private val fxRateCache: FxRateCache,
 ) {
 
     private var userId: Long = 0L
@@ -46,6 +48,7 @@ class RemittanceConcurrencyTest @Autowired constructor(
         val wallet = Wallet(userId = userId, currency = Currency.KRW)
         wallet.deposit(Money.of("100000", Currency.KRW))
         walletRepository.saveAndFlush(wallet)
+        fxRateCache.put(Currency.KRW, Currency.USD, BigDecimal("0.000735"))
     }
 
     @AfterTest

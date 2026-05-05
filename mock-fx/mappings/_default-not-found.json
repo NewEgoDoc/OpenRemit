@@ -1,0 +1,12 @@
+{
+  "priority": 99,
+  "request": {
+    "method": "GET",
+    "urlPath": "/rates"
+  },
+  "response": {
+    "status": 404,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "error": "currency pair not supported" }
+  }
+}

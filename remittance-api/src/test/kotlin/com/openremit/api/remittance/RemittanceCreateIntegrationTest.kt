@@ -4,6 +4,7 @@ import com.openremit.api.TestcontainersConfig
 import com.openremit.api.domain.RemittanceStatus
 import com.openremit.api.domain.User
 import com.openremit.api.domain.Wallet
+import com.openremit.api.infrastructure.fx.FxRateCache
 import com.openremit.api.infrastructure.idempotency.IdempotencyKeyRepository
 import com.openremit.api.infrastructure.persistence.RemittanceRepository
 import com.openremit.api.infrastructure.persistence.UserRepository
@@ -18,9 +19,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 import tools.jackson.databind.ObjectMapper
+import java.math.BigDecimal
 import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -41,7 +45,18 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
     private val paymentRepository: PaymentRepository,
     private val idempotencyKeyRepository: IdempotencyKeyRepository,
     private val jwtTokenProvider: JwtTokenProvider,
+    private val fxRateCache: FxRateCache,
 ) {
+
+    companion object {
+        // 테스트는 외부 FX 환경(예: docker-compose의 mock-fx-api)에 의존하면 안 된다.
+        // 도달 불가 주소로 고정해 cache miss → upstream 실패 → 503 시나리오를 결정적으로 만든다.
+        @JvmStatic
+        @DynamicPropertySource
+        fun props(registry: DynamicPropertyRegistry) {
+            registry.add("openremit.fx.base-url") { "http://127.0.0.1:1" }
+        }
+    }
 
     private lateinit var token: String
     private lateinit var userId: String
@@ -56,6 +71,7 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
         walletRepository.saveAndFlush(wallet)
         userId = user.id.toString()
         token = jwtTokenProvider.issue(userId = user.id, email = user.email).token
+        fxRateCache.put(Currency.KRW, Currency.USD, BigDecimal("0.000735"))
     }
 
     @AfterTest
@@ -170,6 +186,19 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
         assertEquals(400, response.status)
         val body = response.contentAsString
         assertTrue(body.contains("Insufficient", ignoreCase = true))
+    }
+
+    @Test
+    fun `unavailable fx rate returns 503 (no cached rate, upstream unreachable)`() {
+        // setup() seeds KRW->USD only; KRW->JPY has no fresh/stale cache and the default
+        // openremit.fx.base-url=http://localhost:9999 has no upstream in this test, so
+        // the provider exhausts retries and throws FxRateUnavailableException → 503.
+        val body = standardBody().toMutableMap().apply { put("to_currency", "JPY") }
+
+        val response = postRemittance(UUID.randomUUID().toString(), body = body)
+
+        assertEquals(503, response.status)
+        assertTrue(response.contentAsString.contains("fx-rate-unavailable", ignoreCase = true))
     }
 
     private fun standardBody(): Map<String, Any> = mapOf(

@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/rates",
+    "queryParameters": {
+      "from": { "equalTo": "KRW" },
+      "to":   { "equalTo": "PHP" }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "from": "KRW", "to": "PHP", "rate": 0.042 }
+  }
+}
