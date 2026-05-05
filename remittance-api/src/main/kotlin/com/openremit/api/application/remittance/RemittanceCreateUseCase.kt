@@ -2,6 +2,7 @@ package com.openremit.api.application.remittance
 
 import com.openremit.api.domain.Remittance
 import com.openremit.api.infrastructure.fx.FxRateProvider
+import com.openremit.api.infrastructure.lock.WalletLockService
 import com.openremit.api.infrastructure.persistence.RemittanceRepository
 import com.openremit.api.infrastructure.persistence.WalletRepository
 import com.openremit.common.Currency
@@ -16,6 +17,27 @@ import java.math.RoundingMode
 
 @Service
 class RemittanceCreateUseCase(
+    private val walletLockService: WalletLockService,
+    private val remittanceCreator: RemittanceCreator,
+) {
+
+    fun create(command: CreateCommand): Remittance =
+        walletLockService.withWalletLock(command.userId) {
+            remittanceCreator.create(command)
+        }
+
+    data class CreateCommand(
+        val userId: Long,
+        val fromCurrency: Currency,
+        val fromAmount: BigDecimal,
+        val toCurrency: Currency,
+        val receiver: ReceiverInfo,
+        val paymentMethod: PaymentMethod,
+    )
+}
+
+@Service
+class RemittanceCreator(
     private val walletRepository: WalletRepository,
     private val remittanceRepository: RemittanceRepository,
     private val paymentGateway: PaymentGatewayClient,
@@ -23,7 +45,7 @@ class RemittanceCreateUseCase(
 ) {
 
     @Transactional
-    fun create(command: CreateCommand): Remittance {
+    fun create(command: RemittanceCreateUseCase.CreateCommand): Remittance {
         val wallet = walletRepository.findByUserId(command.userId)
             ?: throw WalletNotFoundException(command.userId)
 
@@ -56,13 +78,4 @@ class RemittanceCreateUseCase(
 
         return remittanceRepository.save(remittance)
     }
-
-    data class CreateCommand(
-        val userId: Long,
-        val fromCurrency: Currency,
-        val fromAmount: BigDecimal,
-        val toCurrency: Currency,
-        val receiver: ReceiverInfo,
-        val paymentMethod: PaymentMethod,
-    )
 }
