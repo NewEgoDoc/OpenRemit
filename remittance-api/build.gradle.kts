@@ -18,6 +18,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
     implementation("org.flywaydb:flyway-mysql")
+    implementation("org.redisson:redisson:3.50.0")
     runtimeOnly("com.mysql:mysql-connector-j")
 
     implementation(project(":common"))

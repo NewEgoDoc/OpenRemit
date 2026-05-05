@@ -27,6 +27,8 @@ openremit:
     secret: ${JWT_SECRET:dev-secret-please-change-this-must-be-32+bytes}
     issuer: https://openremit.dev
     ttl: PT1H
+  redis:
+    address: ${REDIS_ADDRESS:redis://localhost:6379}
 
 server:
   port: 8080
