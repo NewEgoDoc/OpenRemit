@@ -1,6 +1,16 @@
-// 라이브러리 모듈: 내부 결제 게이트웨이
-// Day 4에 결제 도메인 + JPA 엔티티 추가 예정.
+plugins {
+    kotlin("plugin.jpa")
+}
+
+allOpen {
+    annotation("jakarta.persistence.Entity")
+    annotation("jakarta.persistence.MappedSuperclass")
+    annotation("jakarta.persistence.Embeddable")
+}
 
 dependencies {
     implementation(project(":common"))
+
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter")
 }

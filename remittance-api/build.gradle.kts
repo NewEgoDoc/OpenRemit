@@ -21,6 +21,7 @@ dependencies {
     runtimeOnly("com.mysql:mysql-connector-j")
 
     implementation(project(":common"))
+    implementation(project(":payment-module"))
 
     testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
     testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
