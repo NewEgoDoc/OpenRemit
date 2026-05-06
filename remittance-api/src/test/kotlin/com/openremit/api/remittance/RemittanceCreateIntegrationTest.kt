@@ -1,14 +1,17 @@
 package com.openremit.api.remittance
 
 import com.openremit.api.TestcontainersConfig
+import com.openremit.api.domain.RemittanceEvent
 import com.openremit.api.domain.RemittanceStatus
 import com.openremit.api.domain.User
 import com.openremit.api.domain.Wallet
 import com.openremit.api.infrastructure.fx.FxRateCache
 import com.openremit.api.infrastructure.idempotency.IdempotencyKeyRepository
+import com.openremit.api.infrastructure.persistence.RemittanceEventRepository
 import com.openremit.api.infrastructure.persistence.RemittanceRepository
 import com.openremit.api.infrastructure.persistence.UserRepository
 import com.openremit.api.infrastructure.persistence.WalletRepository
+import com.openremit.common.events.RemittanceEventTopics
 import com.openremit.api.infrastructure.security.JwtTokenProvider
 import com.openremit.common.Currency
 import com.openremit.common.Money
@@ -42,6 +45,7 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
     private val userRepository: UserRepository,
     private val walletRepository: WalletRepository,
     private val remittanceRepository: RemittanceRepository,
+    private val remittanceEventRepository: RemittanceEventRepository,
     private val paymentRepository: PaymentRepository,
     private val idempotencyKeyRepository: IdempotencyKeyRepository,
     private val jwtTokenProvider: JwtTokenProvider,
@@ -55,6 +59,8 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
         @DynamicPropertySource
         fun props(registry: DynamicPropertyRegistry) {
             registry.add("openremit.fx.base-url") { "http://127.0.0.1:1" }
+            // kafka.bootstrap-servers는 TestcontainersConfig가 System property로 주입.
+            com.openremit.api.TestcontainersConfig.kafka
         }
     }
 
@@ -77,6 +83,7 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
     @AfterTest
     fun cleanup() {
         idempotencyKeyRepository.deleteAllInBatch()
+        remittanceEventRepository.deleteAllInBatch()
         remittanceRepository.deleteAllInBatch()
         paymentRepository.deleteAllInBatch()
         walletRepository.deleteAllInBatch()
@@ -103,6 +110,30 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
         val wallet = walletRepository.findByUserId(userId.toLong())!!
         assertEquals(0, wallet.balance.compareTo(Money.of("900000", Currency.KRW)))
         assertEquals(1, paymentRepository.count())
+    }
+
+    @Test
+    fun `paid remittance writes one outbox event in same transaction`() {
+        val key = UUID.randomUUID().toString()
+        val response = postRemittance(key, body = standardBody())
+        assertEquals(201, response.status)
+
+        val remittanceId = (readMap(response.contentAsString)["id"] as Number).toLong()
+        val events = remittanceEventRepository
+            .findByAggregateTypeAndAggregateIdOrderByIdAsc(
+                RemittanceEvent.AGGREGATE_TYPE_REMITTANCE,
+                remittanceId.toString(),
+            )
+
+        assertEquals(1, events.size)
+        val event = events.single()
+        assertEquals(RemittanceEventTopics.PAID, event.eventType)
+        val payload = readMap(event.payload)
+        assertEquals(remittanceId, (payload["remittance_id"] as Number).toLong())
+        assertEquals(userId.toLong(), (payload["user_id"] as Number).toLong())
+        assertEquals("KRW", payload["from_currency"])
+        assertEquals("USD", payload["to_currency"])
+        assertNotNull(payload["payment_id"])
     }
 
     @Test

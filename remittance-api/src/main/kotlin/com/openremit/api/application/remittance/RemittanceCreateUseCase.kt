@@ -1,19 +1,25 @@
 package com.openremit.api.application.remittance
 
 import com.openremit.api.domain.Remittance
+import com.openremit.api.domain.RemittanceEvent
 import com.openremit.api.infrastructure.fx.FxRateProvider
 import com.openremit.api.infrastructure.lock.WalletLockService
+import com.openremit.api.infrastructure.persistence.RemittanceEventRepository
 import com.openremit.api.infrastructure.persistence.RemittanceRepository
 import com.openremit.api.infrastructure.persistence.WalletRepository
 import com.openremit.common.Currency
 import com.openremit.common.Money
 import com.openremit.common.ReceiverInfo
+import com.openremit.common.events.RemittanceEventTopics
+import com.openremit.common.events.RemittancePaidEvent
 import com.openremit.payment.PaymentGatewayClient
 import com.openremit.payment.PaymentMethod
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import tools.jackson.databind.ObjectMapper
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.Instant
 
 @Service
 class RemittanceCreateUseCase(
@@ -40,8 +46,10 @@ class RemittanceCreateUseCase(
 class RemittanceCreator(
     private val walletRepository: WalletRepository,
     private val remittanceRepository: RemittanceRepository,
+    private val remittanceEventRepository: RemittanceEventRepository,
     private val paymentGateway: PaymentGatewayClient,
     private val fxRateProvider: FxRateProvider,
+    private val objectMapper: ObjectMapper,
 ) {
 
     @Transactional
@@ -76,6 +84,30 @@ class RemittanceCreator(
         )
         remittance.markPaid(paymentId = payment.paymentId)
 
-        return remittanceRepository.save(remittance)
+        val saved = remittanceRepository.save(remittance)
+
+        // Outbox INSERT — 같은 트랜잭션. Debezium이 binlog → Kafka(remittance.paid) 발행.
+        val payload = RemittancePaidEvent(
+            remittanceId = saved.id,
+            userId = saved.userId,
+            fromCurrency = saved.fromCurrency,
+            fromAmount = saved.fromAmount,
+            toCurrency = saved.toCurrency,
+            toAmount = saved.toAmount,
+            receiverName = saved.receiverName,
+            receiverAccount = saved.receiverAccount,
+            paymentId = payment.paymentId,
+            occurredAt = Instant.now(),
+        )
+        remittanceEventRepository.save(
+            RemittanceEvent(
+                aggregateId = saved.id.toString(),
+                aggregateType = RemittanceEvent.AGGREGATE_TYPE_REMITTANCE,
+                eventType = RemittanceEventTopics.PAID,
+                payload = objectMapper.writeValueAsString(payload),
+            )
+        )
+
+        return saved
     }
 }

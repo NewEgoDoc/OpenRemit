@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/payouts"
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "transformers": ["response-template"],
+    "jsonBody": {
+      "tx_id": "PAYOUT-{{randomValue length=12 type='ALPHANUMERIC' uppercase=true}}",
+      "status": "COMPLETED"
+    }
+  }
+}

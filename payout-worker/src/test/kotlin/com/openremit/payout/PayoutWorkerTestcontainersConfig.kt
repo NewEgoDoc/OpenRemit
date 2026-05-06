@@ -1,18 +1,14 @@
-package com.openremit.api
+package com.openremit.payout
 
-import org.redisson.Redisson
-import org.redisson.api.RedissonClient
-import org.redisson.config.Config
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.context.annotation.Bean
-import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.MySQLContainer
 import org.testcontainers.kafka.ConfluentKafkaContainer
 import org.testcontainers.utility.DockerImageName
 
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfig {
+class PayoutWorkerTestcontainersConfig {
 
     @Bean
     @ServiceConnection
@@ -24,7 +20,7 @@ class TestcontainersConfig {
 
     companion object {
         // Spring Boot 4.0의 @ServiceConnection이 ConfluentKafkaContainer를 인식하지 않으므로
-        // singleton container + System property 주입으로 bootstrap-servers를 모든 테스트에 노출한다.
+        // singleton container + System property 주입으로 bootstrap-servers를 노출한다.
         val kafka: ConfluentKafkaContainer =
             ConfluentKafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.1"))
                 .also { it.start() }
@@ -32,19 +28,5 @@ class TestcontainersConfig {
         init {
             System.setProperty("spring.kafka.bootstrap-servers", kafka.bootstrapServers)
         }
-    }
-
-    @Bean
-    fun redisContainer(): GenericContainer<*> =
-        GenericContainer(DockerImageName.parse("redis:7.2-alpine"))
-            .withExposedPorts(6379)
-
-    @Bean(destroyMethod = "shutdown")
-    fun redissonClient(redisContainer: GenericContainer<*>): RedissonClient {
-        if (!redisContainer.isRunning) redisContainer.start()
-        val config = Config()
-        config.useSingleServer().address =
-            "redis://${redisContainer.host}:${redisContainer.getMappedPort(6379)}"
-        return Redisson.create(config)
     }
 }

@@ -21,6 +21,7 @@ dependencies {
     implementation("org.redisson:redisson:3.50.0")
     implementation("io.github.resilience4j:resilience4j-spring-boot3:2.3.0")
     implementation("io.github.resilience4j:resilience4j-reactor:2.3.0")
+    implementation("org.springframework.boot:spring-boot-starter-kafka")
     runtimeOnly("com.mysql:mysql-connector-j")
 
     implementation(project(":common"))
@@ -32,7 +33,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-kafka-test")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:mysql")
+    testImplementation("org.testcontainers:kafka")
     testImplementation("org.wiremock:wiremock-standalone:3.13.1")
 }
