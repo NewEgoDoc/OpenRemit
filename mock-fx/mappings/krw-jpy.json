@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/rates",
+    "queryParameters": {
+      "from": { "equalTo": "KRW" },
+      "to":   { "equalTo": "JPY" }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": { "from": "KRW", "to": "JPY", "rate": 0.105 }
+  }
+}

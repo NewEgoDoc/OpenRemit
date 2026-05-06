@@ -4,6 +4,8 @@ import com.openremit.api.application.auth.EmailAlreadyExistsException
 import com.openremit.api.application.auth.InvalidCredentialsException
 import com.openremit.api.domain.IllegalStateTransitionException
 import com.openremit.api.domain.InsufficientBalanceException
+import com.openremit.api.infrastructure.fx.FxRateBadRequestException
+import com.openremit.api.infrastructure.fx.FxRateUnavailableException
 import com.openremit.api.infrastructure.idempotency.IdempotencyConflictException
 import com.openremit.api.infrastructure.idempotency.IdempotencyInProgressException
 import com.openremit.api.infrastructure.idempotency.IdempotencyKeyTooLongException
@@ -49,6 +51,14 @@ class GlobalExceptionHandler {
     @ExceptionHandler(IdempotencyInProgressException::class)
     fun handleIdempotencyInProgress(ex: IdempotencyInProgressException): ProblemDetail =
         problem(HttpStatus.CONFLICT, "idempotency-in-progress", "Idempotency Request In Progress", ex.message)
+
+    @ExceptionHandler(FxRateUnavailableException::class)
+    fun handleFxRateUnavailable(ex: FxRateUnavailableException): ProblemDetail =
+        problem(HttpStatus.SERVICE_UNAVAILABLE, "fx-rate-unavailable", "FX Rate Unavailable", ex.message)
+
+    @ExceptionHandler(FxRateBadRequestException::class)
+    fun handleFxRateBadRequest(ex: FxRateBadRequestException): ProblemDetail =
+        problem(HttpStatus.BAD_REQUEST, "fx-rate-bad-request", "FX Rate Bad Request", ex.message)
 
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(ex: IllegalArgumentException): ProblemDetail =

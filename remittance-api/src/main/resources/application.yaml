@@ -29,6 +29,37 @@ openremit:
     ttl: PT1H
   redis:
     address: ${REDIS_ADDRESS:redis://localhost:6379}
+  fx:
+    base-url: ${FX_BASE_URL:http://localhost:9999}
+    cache:
+      fresh-ttl: PT60S
+      stale-ttl: PT24H
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      fx-rate:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        ignore-exceptions:
+          - com.openremit.api.infrastructure.fx.FxRateBadRequestException
+  retry:
+    instances:
+      fx-rate:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.RestClientException
+          - java.io.IOException
+        ignore-exceptions:
+          - com.openremit.api.infrastructure.fx.FxRateBadRequestException
 
 server:
   port: 8080
