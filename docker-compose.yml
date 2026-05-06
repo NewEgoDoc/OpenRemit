@@ -12,9 +12,17 @@ services:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      # Debezium / Outbox CDC 활성화 (ADR-010)
+      - --server-id=223344
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uopenremit", "-popenremit"]
       interval: 5s
@@ -49,6 +57,20 @@ services:
       timeout: 3s
       retries: 10
 
+  mock-payout-api:
+    image: wiremock/wiremock:3.13.1
+    container_name: openremit-mock-payout
+    ports:
+      - "9998:8080"
+    volumes:
+      - ./mock-payout/mappings:/home/wiremock/mappings:ro
+    command: ["--port", "8080", "--global-response-templating"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/__admin/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   kafka:
     image: apache/kafka:3.8.0
     container_name: openremit-kafka
@@ -59,9 +81,10 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: controller,broker
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      # Dual listeners — host(9092)는 호스트 JVM/테스트용, internal(29092)은 Debezium 등 컨테이너용
+      KAFKA_LISTENERS: PLAINTEXT_HOST://:9092,PLAINTEXT://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_HOST://localhost:9092,PLAINTEXT://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
@@ -74,6 +97,63 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
+
+  debezium:
+    image: debezium/connect:2.7.3.Final
+    container_name: openremit-debezium
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: openremit-cdc
+      CONFIG_STORAGE_TOPIC: openremit_connect_configs
+      OFFSET_STORAGE_TOPIC: openremit_connect_offsets
+      STATUS_STORAGE_TOPIC: openremit_connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  debezium-register:
+    image: curlimages/curl:8.10.1
+    container_name: openremit-debezium-register
+    depends_on:
+      debezium:
+        condition: service_healthy
+    volumes:
+      - ./debezium:/work:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Registering Debezium MySQL outbox connector..."
+        for i in 1 2 3 4 5 6; do
+          STATUS=$$(curl -sS -o /tmp/resp.txt -w "%{http_code}" \
+            -X PUT \
+            -H "Content-Type: application/json" \
+            --data @/work/openremit-outbox-connector.json \
+            http://debezium:8083/connectors/openremit-outbox/config)
+          echo "attempt $$i: HTTP $$STATUS"
+          if [ "$$STATUS" = "200" ] || [ "$$STATUS" = "201" ]; then
+            echo "registered."
+            exit 0
+          fi
+          cat /tmp/resp.txt; echo
+          sleep 5
+        done
+        echo "failed to register after retries."
+        exit 1
+    restart: "no"
 
 volumes:
   mysql-data:

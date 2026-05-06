@@ -1,0 +1,39 @@
+{
+  "connector.class": "io.debezium.connector.mysql.MySqlConnector",
+  "tasks.max": "1",
+
+  "database.hostname": "mysql",
+  "database.port": "3306",
+  "database.user": "debezium",
+  "database.password": "dbz",
+  "database.server.id": "184054",
+  "database.include.list": "openremit",
+  "database.connectionTimeZone": "UTC",
+
+  "topic.prefix": "openremit",
+
+  "table.include.list": "openremit.remittance_events,openremit.payout_outbox",
+
+  "schema.history.internal.kafka.bootstrap.servers": "kafka:29092",
+  "schema.history.internal.kafka.topic": "schema-changes.openremit",
+
+  "include.schema.changes": "false",
+  "tombstones.on.delete": "false",
+  "snapshot.mode": "schema_only",
+
+  "transforms": "outbox",
+  "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+  "transforms.outbox.table.field.event.id": "id",
+  "transforms.outbox.table.field.event.key": "aggregate_id",
+  "transforms.outbox.table.field.event.type": "event_type",
+  "transforms.outbox.table.field.event.payload": "payload",
+  "transforms.outbox.table.expand.json.payload": "true",
+  "transforms.outbox.route.by.field": "event_type",
+  "transforms.outbox.route.topic.replacement": "${routedByValue}",
+  "transforms.outbox.table.fields.additional.placement": "aggregate_type:header:eventAggregateType",
+
+  "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "key.converter.schemas.enable": "false",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false"
+}
