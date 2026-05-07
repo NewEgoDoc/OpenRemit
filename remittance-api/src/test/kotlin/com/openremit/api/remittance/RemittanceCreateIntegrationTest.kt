@@ -11,6 +11,8 @@ import com.openremit.api.infrastructure.persistence.RemittanceEventRepository
 import com.openremit.api.infrastructure.persistence.RemittanceRepository
 import com.openremit.api.infrastructure.persistence.UserRepository
 import com.openremit.api.infrastructure.persistence.WalletRepository
+import com.openremit.api.infrastructure.persistence.WalletTransactionRepository
+import com.openremit.api.domain.WalletTransactionRefType
 import com.openremit.common.events.RemittanceEventTopics
 import com.openremit.api.infrastructure.security.JwtTokenProvider
 import com.openremit.common.Currency
@@ -46,6 +48,7 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
     private val walletRepository: WalletRepository,
     private val remittanceRepository: RemittanceRepository,
     private val remittanceEventRepository: RemittanceEventRepository,
+    private val walletTransactionRepository: WalletTransactionRepository,
     private val paymentRepository: PaymentRepository,
     private val idempotencyKeyRepository: IdempotencyKeyRepository,
     private val jwtTokenProvider: JwtTokenProvider,
@@ -84,6 +87,7 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
     fun cleanup() {
         idempotencyKeyRepository.deleteAllInBatch()
         remittanceEventRepository.deleteAllInBatch()
+        walletTransactionRepository.deleteAllInBatch()
         remittanceRepository.deleteAllInBatch()
         paymentRepository.deleteAllInBatch()
         walletRepository.deleteAllInBatch()
@@ -110,6 +114,22 @@ class RemittanceCreateIntegrationTest @Autowired constructor(
         val wallet = walletRepository.findByUserId(userId.toLong())!!
         assertEquals(0, wallet.balance.compareTo(Money.of("900000", Currency.KRW)))
         assertEquals(1, paymentRepository.count())
+    }
+
+    @Test
+    fun `wallet transaction ledger row is written in same transaction as withdraw`() {
+        val key = UUID.randomUUID().toString()
+        val response = postRemittance(key, body = standardBody())
+        val remittanceId = (readMap(response.contentAsString)["id"] as Number).toLong()
+
+        val wallet = walletRepository.findByUserId(userId.toLong())!!
+        val txns = walletTransactionRepository.findByWalletIdOrderByIdAsc(wallet.id)
+        assertEquals(1, txns.size)
+        val txn = txns.single()
+        assertEquals(0, txn.amount.compareTo(BigDecimal("-100000")))
+        assertEquals(0, txn.balanceAfter.compareTo(BigDecimal("900000")))
+        assertEquals(WalletTransactionRefType.REMITTANCE, txn.referenceType)
+        assertEquals(remittanceId, txn.referenceId)
     }
 
     @Test
