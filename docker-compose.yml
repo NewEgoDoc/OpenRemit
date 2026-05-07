@@ -71,6 +71,20 @@ services:
       timeout: 3s
       retries: 10
 
+  mock-webhook:
+    image: wiremock/wiremock:3.13.1
+    container_name: openremit-mock-webhook
+    ports:
+      - "9997:8080"
+    volumes:
+      - ./mock-webhook/mappings:/home/wiremock/mappings:ro
+    command: ["--port", "8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/__admin/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   kafka:
     image: apache/kafka:3.8.0
     container_name: openremit-kafka

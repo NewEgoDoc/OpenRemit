@@ -10,7 +10,6 @@ import com.openremit.payout.infrastructure.client.PayoutClient
 import com.openremit.payout.infrastructure.persistence.PayoutAttemptRepository
 import com.openremit.payout.infrastructure.persistence.PayoutOutboxRepository
 import org.slf4j.LoggerFactory
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import tools.jackson.databind.ObjectMapper
@@ -27,9 +26,14 @@ class PayoutProcessor(
 
     /**
      * 단일 트랜잭션으로 처리:
-     *   1) PayoutAttempt INSERT (UNIQUE remittance_id로 멱등성 차단)
+     *   1) PayoutAttempt 사전 SELECT(멱등성 체크) → 없으면 INSERT
      *   2) 송금사 API 호출 (외부 I/O — 트랜잭션 안이지만 단일 호출이라 짧음)
      *   3) attempts 상태 업데이트 + payout_outbox INSERT (Debezium 발행 대상)
+     *
+     * 멱등성: 사전 SELECT로 차단. UNIQUE 제약 위반을 catch하던 이전 패턴은 트랜잭션을
+     *   rollback-only로 마킹해 commit 시 UnexpectedRollbackException → Kafka partition stuck.
+     *   Kafka 키(remittanceId) 기반 파티셔닝으로 동일 키가 단일 컨슈머 스레드에 직렬화되므로
+     *   사전 체크의 TOCTOU race는 실무상 발생하지 않는다.
      *
      * 트레이드오프: 외부 I/O가 트랜잭션에 포함되어 DB 커넥션을 점유. 송금사 호출이 짧을 때만 안전.
      * 호출이 길어지면 향후 (1) attempts INSERT만 트랜잭션 1, (2) 송금사 호출, (3) outbox INSERT를
@@ -37,12 +41,11 @@ class PayoutProcessor(
      */
     @Transactional
     fun process(event: RemittancePaidEvent) {
-        val attempt = try {
-            payoutAttemptRepository.saveAndFlush(PayoutAttempt(remittanceId = event.remittanceId))
-        } catch (e: DataIntegrityViolationException) {
+        if (payoutAttemptRepository.findByRemittanceId(event.remittanceId) != null) {
             log.info("payout attempt for remittanceId={} already exists — skipping", event.remittanceId)
             return
         }
+        val attempt = payoutAttemptRepository.saveAndFlush(PayoutAttempt(remittanceId = event.remittanceId))
 
         val outbox: PayoutOutboxEvent = try {
             val result = payoutClient.payout(
