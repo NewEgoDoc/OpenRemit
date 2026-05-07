@@ -112,6 +112,49 @@ class PayoutWorkerIntegrationTest @Autowired constructor(
     }
 
     @Test
+    fun `duplicate remittance paid event is deduplicated and payout API called once`() {
+        // 같은 remittanceId로 3번 produce — Kafka at-least-once 시나리오 모사.
+        // 사전 SELECT 멱등성 체크가 없으면 두 번째 메시지가 UNIQUE 위반 → rollback-only →
+        // UnexpectedRollbackException → ack 안 됨 → 무한 루프로 partition stuck.
+        val event = paidEvent(remittanceId = 77L)
+        repeat(3) {
+            kafkaTemplate.send(
+                RemittanceEventTopics.PAID,
+                event.remittanceId.toString(),
+                objectMapper.writeValueAsString(event),
+            ).get()
+        }
+
+        waitForCondition(timeoutMs = 30_000) {
+            payoutAttemptRepository.findByRemittanceId(77L)?.status == PayoutAttemptStatus.COMPLETED
+        }
+
+        // attempt 1행만, outbox 1건만, payout API 호출도 1회만.
+        val attempt = payoutAttemptRepository.findByRemittanceId(77L)
+        assertNotNull(attempt)
+        assertEquals(PayoutAttemptStatus.COMPLETED, attempt.status)
+
+        val events = payoutOutboxRepository.findByAggregateTypeAndAggregateIdOrderByIdAsc(
+            PayoutOutboxEvent.AGGREGATE_TYPE_REMITTANCE,
+            "77",
+        )
+        // 추가 메시지 처리가 모두 사전 체크에서 skip되어 outbox 1건만.
+        // 짧은 시간 내에 추가 outbox row가 안 들어오는지 한 번 더 대기.
+        Thread.sleep(1_000)
+        val eventsAfterWait = payoutOutboxRepository.findByAggregateTypeAndAggregateIdOrderByIdAsc(
+            PayoutOutboxEvent.AGGREGATE_TYPE_REMITTANCE,
+            "77",
+        )
+        assertEquals(1, events.size)
+        assertEquals(1, eventsAfterWait.size)
+        wireMock.verify(
+            1,
+            com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(urlPathEqualTo("/payouts"))
+                .withRequestBody(matchingJsonPath("$.remittance_id", equalTo("77"))),
+        )
+    }
+
+    @Test
     fun `payout 5xx writes failed outbox and marks attempt failed`() {
         val event = paidEvent(remittanceId = 99L)
         kafkaTemplate.send(
