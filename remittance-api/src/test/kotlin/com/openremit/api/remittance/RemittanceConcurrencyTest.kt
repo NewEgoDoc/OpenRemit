@@ -34,6 +34,7 @@ class RemittanceConcurrencyTest @Autowired constructor(
     private val walletRepository: WalletRepository,
     private val remittanceRepository: RemittanceRepository,
     private val paymentRepository: PaymentRepository,
+    private val walletTransactionRepository: com.openremit.api.infrastructure.persistence.WalletTransactionRepository,
     private val fxRateCache: FxRateCache,
 ) {
 
@@ -53,6 +54,7 @@ class RemittanceConcurrencyTest @Autowired constructor(
 
     @AfterTest
     fun cleanup() {
+        walletTransactionRepository.deleteAllInBatch()
         remittanceRepository.deleteAllInBatch()
         paymentRepository.deleteAllInBatch()
         walletRepository.deleteAllInBatch()

@@ -2,11 +2,14 @@ package com.openremit.api.application.remittance
 
 import com.openremit.api.domain.Remittance
 import com.openremit.api.domain.RemittanceEvent
+import com.openremit.api.domain.WalletTransaction
+import com.openremit.api.domain.WalletTransactionRefType
 import com.openremit.api.infrastructure.fx.FxRateProvider
 import com.openremit.api.infrastructure.lock.WalletLockService
 import com.openremit.api.infrastructure.persistence.RemittanceEventRepository
 import com.openremit.api.infrastructure.persistence.RemittanceRepository
 import com.openremit.api.infrastructure.persistence.WalletRepository
+import com.openremit.api.infrastructure.persistence.WalletTransactionRepository
 import com.openremit.common.Currency
 import com.openremit.common.Money
 import com.openremit.common.ReceiverInfo
@@ -47,6 +50,7 @@ class RemittanceCreator(
     private val walletRepository: WalletRepository,
     private val remittanceRepository: RemittanceRepository,
     private val remittanceEventRepository: RemittanceEventRepository,
+    private val walletTransactionRepository: WalletTransactionRepository,
     private val paymentGateway: PaymentGatewayClient,
     private val fxRateProvider: FxRateProvider,
     private val objectMapper: ObjectMapper,
@@ -85,6 +89,17 @@ class RemittanceCreator(
         remittance.markPaid(paymentId = payment.paymentId)
 
         val saved = remittanceRepository.save(remittance)
+
+        // 정산 ledger INSERT — 같은 트랜잭션. wallet 잔액 변동의 단일 출처.
+        walletTransactionRepository.save(
+            WalletTransaction(
+                walletId = wallet.id,
+                amount = fromMoney.amount.negate(),
+                balanceAfter = wallet.balance.amount,
+                referenceType = WalletTransactionRefType.REMITTANCE,
+                referenceId = saved.id,
+            )
+        )
 
         // Outbox INSERT — 같은 트랜잭션. Debezium이 binlog → Kafka(remittance.paid) 발행.
         val payload = RemittancePaidEvent(
