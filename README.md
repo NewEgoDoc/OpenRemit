@@ -138,9 +138,11 @@ docker compose up -d
 - `openremit-mysql` (3306, binlog ROW + GTID 활성)
 - `openremit-redis` (6379)
 - `openremit-kafka` (9092 host / 29092 internal, KRaft single-node)
-- `openremit-mock-fx` (9999), `openremit-mock-payout` (9998) — WireMock
+- `openremit-mock-fx` (9999), `openremit-mock-payout` (9998), `openremit-mock-webhook` (9997) — WireMock
 - `openremit-debezium` (8083) — Connect standalone
 - `openremit-debezium-register` — outbox 커넥터 자동 등록 (1회성, retry 6회)
+- `openremit-prometheus` (9090) — `host.docker.internal`로 호스트 JVM의 4개 모듈 scrape
+- `openremit-grafana` (3000) — anonymous Viewer 허용, datasource(`prometheus`) + 대시보드(`openremit`) provisioning
 
 검증:
 ```bash
@@ -158,3 +160,37 @@ docker exec -it openremit-kafka /opt/kafka/bin/kafka-console-consumer.sh \
 ```
 
 볼륨 초기화가 필요하면 `docker compose down -v` 후 재기동 (mysql-init 스크립트가 다시 실행되어 Debezium 사용자가 생성됨).
+
+## 관측성 — 메트릭 / 로그 (Day 12)
+
+### 메트릭
+
+각 Spring Boot 모듈이 `/actuator/prometheus`를 노출하고, `docker-compose`의 Prometheus가 `host.docker.internal:808x`로 scrape 합니다.
+
+```bash
+curl -s http://localhost:8080/actuator/prometheus | head    # remittance-api
+curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[].health'
+```
+
+| 모듈 | actuator 포트 | prometheus 라벨 |
+|---|---|---|
+| `remittance-api` | 8080 | `service="remittance-api"` |
+| `payout-worker` | 8081 | `service="payout-worker"` |
+| `webhook-dispatcher` | 8082 | `service="webhook-dispatcher"` |
+| `reconciler` | 8084 | `service="reconciler"` |
+
+Grafana 접속: `http://localhost:3000` (anonymous Viewer). 좌측 메뉴 → Dashboards → **OpenRemit / OpenRemit — Service Overview** 자동 로드. 대시보드 UID는 `openremit`이며 [`docker/grafana/dashboards/openremit.json`](docker/grafana/dashboards/openremit.json)에서 관리합니다.
+
+### 로깅
+
+`logback-spring.xml`은 `common` 모듈에 단일 정의되며 profile에 따라 분기합니다.
+
+- **`local`** (개발): 사람이 읽기 좋은 콘솔 텍스트
+- **그 외 default/docker/prod**: 한 줄 JSON (`logstash-logback-encoder` 8.0)
+
+```bash
+SPRING_PROFILES_ACTIVE=local ./gradlew :remittance-api:bootRun   # 텍스트
+./gradlew :remittance-api:bootRun                                # JSON (default)
+```
+
+JSON 한 줄에는 `@timestamp`, `level`, `logger_name`, `thread_name`, `message`, `appName`(=spring.application.name), `app`(customField, 동일 값) 필드가 부착되어 Loki/ELK/Datadog 같은 수집기에서 즉시 라벨링 가능합니다.
