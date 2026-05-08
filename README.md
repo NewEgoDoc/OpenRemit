@@ -117,6 +117,68 @@ mismatch 가 발견되어도 잡 자체는 SUCCESS 로 종료합니다. `reconci
 ./gradlew :reconciler:bootRun         # 매일 04:00 KST 자동 (openremit.reconcile.cron 으로 변경)
 ```
 
+## 인덱스 튜닝 사례 — `remittances` 사용자별 최신순 조회
+
+대상 쿼리: `RemittanceRepository.findByUserIdOrderByCreatedAtDesc(userId)`
+
+```sql
+SELECT * FROM remittances WHERE user_id = ? ORDER BY created_at DESC;
+```
+
+측정 환경: MySQL 8 / 사용자 10,000명 × 송금 50건 = `remittances` 500,000행 (시드: `docs/perf/seed.sql`).
+
+**BEFORE — `idx_remittances_user_status (user_id, status)` 만 존재**
+
+```
+EXPLAIN: type=ref  key=idx_remittances_user_status  rows=50  Extra=Using filesort
+
+EXPLAIN ANALYZE:
+  -> Sort: remittances.created_at DESC  (cost=17.5 rows=50)
+       (actual time=0.10..0.43 rows=50 loops=1)
+      -> Index lookup on remittances using idx_remittances_user_status (user_id=…)
+         (cost=17.5 rows=50) (actual time=0.018..0.243 rows=50 loops=1)
+```
+
+`(user_id, status)` 인덱스는 user_id 필터까지만 도와주고 `ORDER BY created_at` 단계에서 **별도 정렬(filesort)** 이 발생합니다.
+
+**AFTER — V6 마이그레이션으로 `(user_id, created_at)` 인덱스 추가**
+
+```sql
+ALTER TABLE remittances ADD INDEX idx_remittances_user_created (user_id, created_at);
+```
+
+```
+EXPLAIN: type=ref  key=idx_remittances_user_created  rows=50  Extra=Backward index scan
+
+EXPLAIN ANALYZE:
+  -> Index lookup on remittances using idx_remittances_user_created (user_id=…) (reverse)
+     (cost=17.5 rows=50) (actual time=0.010..0.292 rows=50 loops=1)
+```
+
+옵티마이저가 새 인덱스를 선택해 **plan에서 Sort 노드 자체가 제거**됩니다. `created_at`을 인덱스 정의에 ASC로 남기고 InnoDB의 backward index scan으로 DESC 요구를 그대로 처리합니다.
+
+| 관점 | BEFORE | AFTER |
+|---|---|---|
+| Plan 노드 | Sort + Index lookup (2단계) | Index lookup (reverse) (1단계) |
+| 정렬 비용 | filesort (사용자당 N건 정렬) | 0 (인덱스가 이미 정렬) |
+| 시간 복잡도 | O(N log N) | O(N) |
+| 측정 시간 (50건) | 0.10 ~ 0.43 ms | 0.05 ~ 0.29 ms |
+
+50행 정렬은 절대 비용이 작아 시간 차이는 마이크로초 단위지만, **사용자당 송금 건수 N이 커질수록 격차가 비선형으로 벌어집니다** (filesort N log N vs 인덱스 스캔 N).
+
+**왜 기존 `(user_id, status)` 인덱스를 유지하는가**
+
+두 인덱스는 워크로드가 다릅니다.
+
+| 쿼리 | 옵티마이저가 고르는 인덱스 |
+|---|---|
+| `WHERE user_id=? ORDER BY created_at DESC` | `idx_remittances_user_created` (이번에 추가) |
+| `WHERE user_id=? AND status=?` (정렬 없음) | `idx_remittances_user_status` (기존) |
+
+`(user_id, status, created_at)` 한 개로 둘을 묶는 안도 있지만 status enum 카디널리티가 6에 불과해 prefix 가치가 떨어집니다. 워크로드별로 인덱스를 분리하는 편이 더 명확합니다.
+
+자세한 표·전체 EXPLAIN 출력은 [`docs/04-erd.md`](../docs/04-erd.md#인덱스-튜닝-사례--remittances-사용자별-최신순-조회) 참고.
+
 ## 테스트
 
 ```bash
