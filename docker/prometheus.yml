@@ -2,15 +2,20 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# 풀스택 모드(--profile app)에서 컨테이너 앱을 직접 scrape. host.docker.internal
+# 잡을 같이 두면 host-published 포트를 통해 같은 인스턴스를 중복 수집해 Grafana
+# 대시보드(`sum by (service)`)가 2배로 보이므로 container 잡 단독 사용.
+# 호스트 JVM 모드에서는 Grafana 대시보드가 비고 raw 메트릭은 actuator/prometheus
+# 직접 curl 로 확인.
 scrape_configs:
   - job_name: openremit
     metrics_path: /actuator/prometheus
     static_configs:
-      - targets: ["host.docker.internal:8080"]
+      - targets: ["remittance-api:8080"]
         labels: { service: remittance-api }
-      - targets: ["host.docker.internal:8081"]
+      - targets: ["payout-worker:8080"]
         labels: { service: payout-worker }
-      - targets: ["host.docker.internal:8082"]
+      - targets: ["webhook-dispatcher:8080"]
         labels: { service: webhook-dispatcher }
-      - targets: ["host.docker.internal:8084"]
+      - targets: ["reconciler:8080"]
         labels: { service: reconciler }

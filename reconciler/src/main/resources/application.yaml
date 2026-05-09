@@ -7,9 +7,9 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
   datasource:
-    url: jdbc:mysql://localhost:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: openremit
-    password: openremit
+    url: ${DB_URL:jdbc:mysql://localhost:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USER:openremit}
+    password: ${DB_PASSWORD:openremit}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
