@@ -7,9 +7,9 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
   datasource:
-    url: jdbc:mysql://localhost:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: openremit
-    password: openremit
+    url: ${DB_URL:jdbc:mysql://localhost:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USER:openremit}
+    password: ${DB_PASSWORD:openremit}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
@@ -21,6 +21,13 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    # 풀스택 모드(--profile app)에서 다른 모듈이 자기 마이그레이션을 먼저 실행해
+    # 스키마가 비어있지 않은 상태가 되면 default baseline-on-migrate=false에서는
+    # FlywayException이 발생. 다른 3개 모듈(payout/webhook/reconciler)의 패턴과
+    # 동일하게 baseline 자동 생성. 모듈별 테이블 네임스페이스가 겹치지 않아
+    # V1 이후의 CREATE TABLE 과 충돌하지 않음.
+    baseline-on-migrate: true
+    baseline-version: "0"
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     consumer:

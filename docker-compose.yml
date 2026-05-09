@@ -52,7 +52,9 @@ services:
       - ./mock-fx/mappings:/home/wiremock/mappings:ro
     command: ["--port", "8080", "--global-response-templating"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/__admin/health || exit 1"]
+      # WireMock /__admin/health는 GET만 응답(HEAD는 404). wget --spider가 HEAD를
+      # 보내서 false-negative가 나므로 GET 후 응답 폐기 형태로 변경.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/__admin/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -66,7 +68,9 @@ services:
       - ./mock-payout/mappings:/home/wiremock/mappings:ro
     command: ["--port", "8080", "--global-response-templating"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/__admin/health || exit 1"]
+      # WireMock /__admin/health는 GET만 응답(HEAD는 404). wget --spider가 HEAD를
+      # 보내서 false-negative가 나므로 GET 후 응답 폐기 형태로 변경.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/__admin/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -80,7 +84,9 @@ services:
       - ./mock-webhook/mappings:/home/wiremock/mappings:ro
     command: ["--port", "8080"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/__admin/health || exit 1"]
+      # WireMock /__admin/health는 GET만 응답(HEAD는 404). wget --spider가 HEAD를
+      # 보내서 false-negative가 나므로 GET 후 응답 폐기 형태로 변경.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/__admin/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -207,6 +213,111 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+
+  # ---------- 풀스택 모드 (--profile app) ----------
+  # 평소 개발은 인프라만 띄우고 호스트 JVM에서 :module:bootRun, 검증/시연 시
+  # `docker compose --profile app up -d --build` 로 4개 앱까지 한 번에 기동.
+  # 컨테이너 내부 포트는 모두 8080으로 표준화(SERVER_PORT 주입), 호스트 포트
+  # 매핑만 모듈별로 분리해 호스트 JVM 모드와 포트 충돌 없도록 정렬.
+
+  remittance-api:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: remittance-api
+    container_name: openremit-remittance-api
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      debezium-register:
+        condition: service_completed_successfully
+      mock-fx-api:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USER: openremit
+      DB_PASSWORD: openremit
+      KAFKA_BOOTSTRAP: kafka:29092
+      REDIS_ADDRESS: redis://redis:6379
+      FX_BASE_URL: http://mock-fx-api:8080
+    ports:
+      - "8080:8080"
+
+  payout-worker:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: payout-worker
+    container_name: openremit-payout-worker
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      debezium-register:
+        condition: service_completed_successfully
+      mock-payout-api:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USER: openremit
+      DB_PASSWORD: openremit
+      KAFKA_BOOTSTRAP: kafka:29092
+      PAYOUT_BASE_URL: http://mock-payout-api:8080
+    ports:
+      - "8081:8080"
+
+  webhook-dispatcher:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: webhook-dispatcher
+    container_name: openremit-webhook-dispatcher
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      debezium-register:
+        condition: service_completed_successfully
+      mock-webhook:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USER: openremit
+      DB_PASSWORD: openremit
+      KAFKA_BOOTSTRAP: kafka:29092
+      WEBHOOK_TARGET_URL: http://mock-webhook:8080/webhook
+    ports:
+      - "8082:8080"
+
+  reconciler:
+    profiles: ["app"]
+    build:
+      context: .
+      args:
+        MODULE: reconciler
+    container_name: openremit-reconciler
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      DB_URL: jdbc:mysql://mysql:3306/openremit?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      DB_USER: openremit
+      DB_PASSWORD: openremit
+    ports:
+      - "8084:8080"
 
 volumes:
   mysql-data:

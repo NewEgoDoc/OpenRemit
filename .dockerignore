@@ -1,0 +1,24 @@
+# Gradle / Kotlin / IDE 캐시 — 빌드 컨텍스트 비대화 + 호스트 잔여물 차단
+**/build
+**/.gradle
+**/.kotlin
+.idea
+*.iml
+
+# VCS / 인프라 산출물 — 컨테이너 안에서 필요 없음
+.git
+.github
+.gitignore
+.gitattributes
+
+# 인프라/문서 — Dockerfile build stage에서 미사용
+docs
+docker
+debezium
+mock-fx
+mock-payout
+mock-webhook
+mysql-init
+docker-compose.yml
+README.md
+AGENTS.md
